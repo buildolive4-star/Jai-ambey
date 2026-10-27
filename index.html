@@ -124,6 +124,8 @@
             left: 100%;
         }
     </style>
+    <!-- Razorpay SDK -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 </head>
 <body class="text-gray-900 pb-24 md:pb-0 selection:bg-hotyellow-400 selection:text-hotred-950">
 
@@ -671,7 +673,7 @@
             </div>
         </section>
 
-        <!-- ================= PAGE 7: CONTACT & STORE (UPDATED ADDRESS) ================= -->
+        <!-- ================= PAGE 7: CONTACT & STORE (UPDATED ADDRESS WITH PAYMENT BOX) ================= -->
         <section id="view-contact" class="hidden space-y-8">
             <div class="bg-white rounded-[2rem] p-8 sm:p-14 shadow-2xl border border-gray-200">
                 <h2 class="text-4xl sm:text-5xl font-black text-hotred-950 font-royal mb-12 text-center border-b-[3px] border-hotyellow-200 pb-6 inline-block w-full">संपर्क करें — जय अम्बे पूजा भंडार</h2>
@@ -718,6 +720,18 @@
                                 <i class="fa-brands fa-whatsapp mr-2 text-xl"></i> WhatsApp
                             </button>
                         </div>
+                        
+                        <!-- ONLINE PAYMENT BOX ADDED HERE -->
+                        <div class="pt-8 mt-8 border-t-2 border-gray-100">
+                            <h4 class="font-black text-gray-900 text-xl mb-4"><i class="fa-solid fa-credit-card text-hotred-600 mr-2"></i> ऑनलाइन सुरक्षित पेमेंट</h4>
+                            <div class="flex flex-col sm:flex-row gap-3">
+                                <input type="number" id="paymentAmount" placeholder="रकम दर्ज करें (₹)" class="flex-1 px-5 py-3 bg-gray-50 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-hotred-500 font-bold text-lg">
+                                <button onclick="triggerPayment()" class="bg-gradient-to-r from-green-600 to-green-700 text-white font-black py-3 px-8 rounded-xl shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 btn-premium text-base">
+                                    पेमेंट करें
+                                </button>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-2 font-bold"><i class="fa-solid fa-shield-halved text-green-500"></i> Razorpay द्वारा 100% सुरक्षित</p>
+                        </div>
                     </div>
 
                     <div class="bg-gradient-to-br from-hotyellow-50 via-white to-hotred-50 rounded-[2rem] p-10 border-2 border-hotyellow-400 flex flex-col justify-center items-center text-center shadow-2xl relative overflow-hidden h-full min-h-[350px]">
@@ -733,7 +747,7 @@
             </div>
         </section>
 
-        <!-- ================= PAGE 8: ADMIN CONTROL PANEL (PRICE REMOVED) ================= -->
+        <!-- ================= PAGE 8: ADMIN CONTROL PANEL ================= -->
         <section id="view-admin" class="hidden space-y-8">
             <div class="bg-gradient-to-r from-hotred-950 to-hotred-800 text-white rounded-[2rem] p-8 flex flex-col sm:flex-row justify-between items-center shadow-2xl border-2 border-hotred-700 gap-4">
                 <h2 class="text-3xl font-black font-royal text-hotyellow-300 drop-shadow-md"><i class="fa-solid fa-sliders mr-3"></i> Admin Dashboard</h2>
@@ -854,7 +868,7 @@
         </div>
     </div>
 
-    <!-- FLOATING WHATSAPP BUTTON (Always available at bottom right) -->
+    <!-- FLOATING WHATSAPP BUTTON -->
     <a href="#" onclick="sendDirectWhatsApp(); return false;" class="fixed bottom-20 md:bottom-8 right-6 z-40 bg-gradient-to-tr from-green-500 to-green-400 hover:from-green-600 hover:to-green-500 text-white w-16 h-16 rounded-full flex items-center justify-center shadow-2xl transition-all transform hover:scale-110 hover:rotate-12 border-[3px] border-white divine-glow">
         <i class="fa-brands fa-whatsapp text-4xl"></i>
     </a>
@@ -874,7 +888,6 @@
             <span>किट</span>
         </button>
         
-        <!-- PUJARI SECTION IN MOBILE BOTTOM BAR (Prominent) -->
         <button onclick="switchTab('pujari')" class="flex flex-col items-center p-3 rounded-full text-[10px] font-black text-hotred-950 bg-hotyellow-400 border-2 border-white relative -top-5 shadow-xl transform hover:scale-105 transition">
             <span class="text-2xl leading-none drop-shadow-sm">🙏</span>
             <span class="mt-1">बुकिंग</span>
@@ -903,7 +916,7 @@
     <script>
         const WHATSAPP_NUMBER = "917498403178";
 
-        // MASTER PRODUCTS DATASET (Price removed)
+        // MASTER PRODUCTS DATASET 
         const DEFAULT_PRODUCTS = [
             { id: 1, nameHi: "गणपति मूर्ति", nameEn: "Ganpati Idol", category: "गणेश पूजा सामग्री", unit: "1 पीस", image: "🗿" },
             { id: 2, nameHi: "अबीर", nameEn: "Abir", category: "पूजा सामग्री", unit: "1 पैकेट", image: "🎨" },
@@ -930,7 +943,7 @@
             { id: 21, nameHi: "बेलपत्र", nameEn: "Belpatra", category: "घर का सामान", unit: "1 गड्डी", image: "🍃" }
         ];
 
-        // KITS (Price removed)
+        // KITS 
         const PUJA_KITS = [
             { id: 101, title: "सत्यनारायण कथा संपूर्ण किट", items: "कथा पुस्तक, पंचमेवा, कपूर, कलावा, धूप, सिंदूर, रोली, चावल, वस्त्र", icon: "📖" },
             { id: 102, title: "गृह प्रवेश पूजन किट", items: "कलश, नारियल, आम पत्ते, हवन सामग्री, गुग्गल, नवग्रह लकड़ी, पीला वस्त्र", icon: "🛕" },
@@ -1318,6 +1331,59 @@
             renderProductsCatalog();
             renderFeaturedProducts();
             showToast('डिफ़ॉल्ट सूची वापस आ गई');
+        }
+
+        // ================= RAZORPAY PAYMENT LOGIC =================
+        function triggerPayment() {
+            const amt = document.getElementById('paymentAmount').value;
+            startPayment(amt);
+        }
+
+        async function startPayment(amountToPay) {
+            if(!amountToPay || amountToPay <= 0) {
+                alert("कृपया सही रकम दर्ज करें (Please enter a valid amount)");
+                return;
+            }
+
+            try {
+                // 1. Backend से आर्डर बनाएं
+                const response = await fetch('/create-order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ amount: amountToPay }) 
+                });
+                
+                if (!response.ok) {
+                    throw new Error("Server Error");
+                }
+
+                const order = await response.json();
+
+                // 2. Razorpay का पॉपअप खोलें
+                var options = {
+                    "key": "rzp_live_Tt1BBebmFbTNfO", // आपकी Live Key ID
+                    "amount": order.amount,
+                    "currency": "INR",
+                    "name": "जय अम्बे पूजा भंडार",
+                    "description": "ऑनलाइन पेमेंट",
+                    "order_id": order.id, 
+                    "handler": function (response){
+                        alert("Payment Successful! Payment ID: " + response.razorpay_payment_id);
+                        
+                        // पेमेंट सफलता के बाद व्हाट्सप्प मेसेज भेजना
+                        let text = `🚩 *ऑनलाइन पेमेंट सफल*%0A%0Aपेमेंट ID: ${response.razorpay_payment_id}%0Aरकम: ₹${amountToPay}%0A%0Aजय अम्बे पूजा भंडार!`;
+                        window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${text}`, '_blank');
+                    },
+                    "theme": {
+                        "color": "#be123c"
+                    }
+                };
+                var rzp1 = new Razorpay(options);
+                rzp1.open();
+            } catch (error) {
+                alert("पेमेंट सिस्टम अभी शुरू नहीं हुआ है! कृपया सुनिश्चित करें कि आपका Render सर्वर चालू है।");
+                console.error("Payment API Error:", error);
+            }
         }
     </script>
 </body>
