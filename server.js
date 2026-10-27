@@ -1,0 +1,43 @@
+const express = require("express");
+const Razorpay = require("razorpay");
+const cors = require("cors");
+const path = require("path");
+
+const app = express();
+app.use(express.json());
+app.use(cors());
+
+// आपकी index.html फाइल को दिखाने के लिए
+app.use(express.static(__dirname));
+
+app.get("/", (req, res) => {
+    res.sendFile(path.join(__dirname, "index.html"));
+});
+
+// Render Environment Variables से Keys लेगा
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID, 
+  key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
+
+// पेमेंट आर्डर बनाने का API
+app.post("/create-order", async (req, res) => {
+  try {
+    const options = {
+      amount: req.body.amount * 100, // पैसे में कन्वर्ट करने के लिए 100 से गुणा
+      currency: "INR",
+      receipt: "receipt_" + Date.now(),
+    };
+
+    const order = await razorpay.orders.create(options);
+    res.json(order);
+  } catch (error) {
+    console.log(error);
+    res.status(500).send("Error creating order");
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});
