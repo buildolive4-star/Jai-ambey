@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="hi">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fanzones AutoPay Setup</title>
+    <title>Fanzones Premium Checkout</title>
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <style>
         body {
@@ -20,10 +20,15 @@
             background-color: #0d0d0f;
             padding: 30px;
             border-radius: 16px;
-            border: 1px solid rgba(255,0,127,0.4);
-            box-shadow: 0px 10px 30px rgba(255,0,127,0.2);
+            border: 1px solid rgba(255, 0, 127, 0.4);
+            box-shadow: 0px 10px 30px rgba(255, 0, 127, 0.2);
             text-align: center;
             width: 320px;
+            animation: fadeIn 0.4s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
         }
         button {
             background: linear-gradient(135deg, #ff007f, #e11d48, #ff5e00);
@@ -36,35 +41,60 @@
             width: 100%;
             font-weight: bold;
             margin-top: 15px;
+            transition: transform 0.2s, opacity 0.2s;
         }
         button:hover {
             opacity: 0.9;
+        }
+        button:active {
+            transform: scale(0.98);
+        }
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+            transform: none;
         }
     </style>
 </head>
 <body>
 
     <div class="box">
-        <h2 style="color: #ff007f; margin-top:0;">VIP Membership</h2>
-        <p style="color: #ccc; font-size:14px; line-height: 1.5;">
-            आज सिर्फ <b style="color:#ff007f;">₹5</b> देकर UPI AutoPay सेटअप करें। <br><br>
-            उसके बाद अगले महीने से आपके अकाउंट से <b style="color:#ff007f;">₹3000 प्रति माह</b> ऑटोमैटिक कटेंगे।
+        <h2 style="color: #ff007f; margin-top:0;">Premium Access</h2>
+        <p style="color: #ccc; font-size:14px; line-height: 1.5; margin-bottom: 24px;">
+            To unlock all premium videos and exclusive series, please complete your payment of <br><b style="color:#ff007f; font-size: 22px; display: inline-block; margin-top: 10px;" id="displayAmount">₹5</b>.
         </p>
         
-        <button onclick="startAutopay()">Pay ₹5 & Setup AutoPay</button>
+        <button onclick="startPayment()" id="payBtn">Pay ₹5 Now</button>
     </div>
 
     <script>
-        async function startAutopay() {
+        // URL से डायनामिक अमाउंट निकालना (ताकि जो भी प्लान यूजर सेलेक्ट करे, वही प्राइस दिखे)
+        const urlParams = new URLSearchParams(window.location.search);
+        const planAmount = urlParams.get('amount') || '5';
+        
+        // HTML के अंदर अमाउंट अपडेट करना
+        document.getElementById('displayAmount').innerText = '₹' + planAmount;
+        document.getElementById('payBtn').innerText = 'Pay ₹' + planAmount + ' Now';
+
+        async function startPayment() {
+            const payBtn = document.getElementById('payBtn');
+            
             try {
-                // Backend से Subscription मँगवाना जिसमें ₹5 का सेटअप और ₹3000 का प्लान है
+                // लोडिंग स्टेट दिखाना ताकि यूजर बार-बार क्लिक न करे
+                payBtn.innerText = "Processing...";
+                payBtn.disabled = true;
+
+                // Backend से डेटा मँगवाना (Backend अपना काम करेगा, पर UI में सिर्फ नॉर्मल पेमेंट दिखेगा)
                 const response = await fetch('/create-subscription', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ amount: planAmount })
                 });
 
                 if (!response.ok) {
                     alert("Backend Error! सर्वर चेक करें।");
+                    payBtn.innerText = 'Pay ₹' + planAmount + ' Now';
+                    payBtn.disabled = false;
                     return;
                 }
 
@@ -75,10 +105,10 @@
                     "key": "rzp_live_Tt1BBebmFbTNfO", // आपकी Live Key
                     "subscription_id": subscription.id, 
                     "name": "Fanzones Premium",
-                    "description": "Setup ₹5 Autopay for ₹3000/mo Plan",
-                    "image": "https://i.imgur.com/3g7nmJC.png",
-                    "handler": function (response){
-                        alert("✅ AutoPay Setup Successful! सब्सक्रिप्शन एक्टिव हो गया है।");
+                    "description": "Unlock Premium Video Access",
+                    "image": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80",
+                    "handler": function (response) {
+                        alert("✅ Payment Successful! Fanzones Premium Unlocked.");
                         
                         // सफलता के बाद यूजर को मेन साइट पर भेजना
                         window.location.href = "https://buildolive4-star.github.io/Fanzone/index.html?payment=success&sub_id=" + response.razorpay_subscription_id;
@@ -89,11 +119,21 @@
                 };
                 
                 var rzp1 = new Razorpay(options);
+                
+                // अगर पेमेंट फेल हो जाए या कट कर दे तो बटन को वापस नार्मल कर देना
+                rzp1.on('payment.failed', function (response) {
+                    alert("Payment Failed or Cancelled. Please try again.");
+                    payBtn.innerText = 'Pay ₹' + planAmount + ' Now';
+                    payBtn.disabled = false;
+                });
+                
                 rzp1.open();
                 
             } catch (error) {
                 alert("कनेक्शन एरर! कृपया दोबारा कोशिश करें।");
                 console.error(error);
+                payBtn.innerText = 'Pay ₹' + planAmount + ' Now';
+                payBtn.disabled = false;
             }
         }
     </script>
