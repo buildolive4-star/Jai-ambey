@@ -7,66 +7,88 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+// Serve static files from the current directory
 app.use(express.static(__dirname));
 
+// Root route
 app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "j.html"));
 });
 
+// j.html route
 app.get("/j.html", (req, res) => {
     res.sendFile(path.join(__dirname, "j.html"));
 });
 
+// Initialize Razorpay with environment variables
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID, 
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
+// Create Subscription Route
 app.post("/create-subscription", async (req, res) => {
   try {
-    // 1. यहाँ प्लान का अमाउंट ₹10,000 (मैक्सिमम लिमिट मैंडेट के लिए) सेट किया गया है
-    const maxMandateLimit = 10000; 
+    // यहाँ फ्रंटएंड (j.html) से जो भी अमाउंट सेलेक्ट होकर आएगा (जैसे 5, 199), उसे पकड़ा जाएगा। 
+    // अगर किसी वजह से अमाउंट नहीं आता है, तो डिफ़ॉल्ट रूप से ₹5 कटेगा।
+    const selectedAmount = req.body.amount ? parseInt(req.body.amount) : 5;
 
+    // यहाँ वह अमाउंट है जो "अगले दिन (कल)" ऑटोमैटिक कटेगा।
+    // 3000 की जगह अब इसे 500 कर दिया गया है।
+    const recurringAmount = 500; 
+
+    // Razorpay Plan Creation
     const plan = await razorpay.plans.create({
       period: "monthly",
       interval: 1,
       item: {
-        name: "Fanzones VIP Max Mandate",
-        amount: maxMandateLimit * 100, // ₹10,000 (पैसे में)
+        name: "Fanzones Premium Plan",
+        amount: recurringAmount * 100, // यह वो अमाउंट है जो कल कटेगा (पैसे में), यानी 500 * 100
         currency: "INR",
-        description: "Up to ₹10,000 AutoPay Mandate",
+        description: "Premium AutoPay Mandate",
       },
     });
 
-    // 2. आज का पहला Upfront/Add-on चार्ज (आप यहाँ अपनी मर्जी से कोई भी अमाउंट रख सकते हैं, जैसे ₹5)
-    const todayUpfrontCharge = 5; // आप इसे 100, 500 जो चाहें बदल सकते हैं
+    // आज का पहला चार्ज जो यूज़र ने फ्रंटएंड में सेलेक्ट किया है (जैसे ₹5)
+    const todayUpfrontCharge = selectedAmount; 
 
+    // अगले दिन (Tomorrow) का टाइम सेट करना ताकि अगला पैसा ठीक 24 घंटे बाद (कल) कटे
+    const tomorrow = Math.floor(Date.now() / 1000) + (24 * 60 * 60);
+
+    // Razorpay Subscription Creation
     const subscription = await razorpay.subscriptions.create({
       plan_id: plan.id,
       customer_notify: 1,
-      total_count: 12, // 12 महीने तक
-      // यह रहा वो जादुई ऑप्शन जिससे आज ही आप अपनी मर्जी का कम या ज्यादा चार्ज काट सकते हैं:
+      total_count: 12, // 12 महीने तक का मैंडेट साइकिल
+      
+      // start_at लगाने से यह पक्का हो जाता है कि असली अमाउंट (₹500) आज नहीं, बल्कि कल कटेगा।
+      start_at: tomorrow, 
+      
+      // यह Addon वाला ऑप्शन आज (तुरंत) पेमेंट काटेगा
       addons: [
         {
           item: {
-            name: "Today Setup Charge",
-            amount: todayUpfrontCharge * 100, // आज सिर्फ ₹5 कटेगा
+            name: "Premium Access Charge", // नाम ऐसा दिया है ताकि बिल में यह एक नार्मल पेमेंट लगे
+            amount: todayUpfrontCharge * 100, // आज सिर्फ सेलेक्ट किया हुआ अमाउंट (जैसे ₹5) ही कटेगा
             currency: "INR"
           }
         }
       ],
       notes: {
-        type: "10000 Mandate with Custom Upfront"
+        type: "Premium Mandate with Dynamic Upfront Charge and Next Day Billing"
       }
     });
 
+    // Send the created subscription response back to the frontend
     res.json(subscription);
+
   } catch (error) {
     console.error("Subscription Error:", error);
     res.status(500).json({ error: "Failed to create subscription" });
   }
 });
 
+// Start the server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
