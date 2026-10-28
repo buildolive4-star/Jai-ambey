@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fanzones AutoPay Checkout</title>
-    <!-- Razorpay Checkout Script -->
+    <title>Fanzones AutoPay Setup</title>
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <style>
         body {
@@ -26,25 +25,6 @@
             text-align: center;
             width: 320px;
         }
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-size: 14px;
-            color: #aaa;
-            text-align: left;
-        }
-        select {
-            width: 100%;
-            padding: 12px;
-            margin-bottom: 20px;
-            font-size: 16px;
-            font-weight: bold;
-            text-align: center;
-            border: 1px solid #333;
-            background: #000;
-            color: #ff007f;
-            border-radius: 8px;
-        }
         button {
             background: linear-gradient(135deg, #ff007f, #e11d48, #ff5e00);
             color: white;
@@ -55,6 +35,7 @@
             cursor: pointer;
             width: 100%;
             font-weight: bold;
+            margin-top: 15px;
         }
         button:hover {
             opacity: 0.9;
@@ -64,49 +45,42 @@
 <body>
 
     <div class="box">
-        <h2 style="color: #ff007f; margin-top:0;">AutoPay Subscription</h2>
-        <p style="color: #bbb; font-size:13px; margin-bottom:20px;">अपना मासिक प्लान चुनें। सेटअप पूरा होने के बाद अगले दिन से ऑटोमैटिक सब्सक्रिप्शन कटेगा।</p>
+        <h2 style="color: #ff007f; margin-top:0;">VIP Membership</h2>
+        <p style="color: #ccc; font-size:14px; line-height: 1.5;">
+            आज सिर्फ <b style="color:#ff007f;">₹5</b> देकर UPI AutoPay सेटअप करें। <br><br>
+            उसके बाद अगले महीने से आपके अकाउंट से <b style="color:#ff007f;">₹3000 प्रति माह</b> ऑटोमैटिक कटेंगे।
+        </p>
         
-        <label>प्लान चुनें:</label>
-        <select id="subAmount">
-            <option value="500">₹500 / महीना</option>
-            <option value="1000">₹1000 / महीना</option>
-            <option value="3000">₹3000 / महीना</option>
-        </select>
-        
-        <button onclick="startAutopay()">Setup UPI AutoPay</button>
+        <button onclick="startAutopay()">Pay ₹5 & Setup AutoPay</button>
     </div>
 
     <script>
         async function startAutopay() {
-            const selectedAmount = document.getElementById('subAmount').value;
-
             try {
-                // 1. Backend को रिक्वेस्ट भेजना ताकि Subscription / Autopay आर्डर बन सके
+                // Backend से Subscription मँगवाना जिसमें ₹5 का सेटअप और ₹3000 का प्लान है
                 const response = await fetch('/create-subscription', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ subscriptionAmount: selectedAmount }) 
+                    headers: { 'Content-Type': 'application/json' }
                 });
 
                 if (!response.ok) {
-                    alert("Backend Error! सर्वर से कनेक्ट नहीं हो पा रहा है।");
+                    alert("Backend Error! सर्वर चेक करें।");
                     return;
                 }
 
                 const subscription = await response.json();
 
-                // 2. Razorpay Autopay Checkout खोलना
+                // Razorpay Checkout खोलना
                 var options = {
                     "key": "rzp_live_Tt1BBebmFbTNfO", // आपकी Live Key
-                    "subscription_id": subscription.id, // बेहद जरूरी: यहाँ order_id की जगह subscription_id रहेगा
+                    "subscription_id": subscription.id, 
                     "name": "Fanzones Premium",
-                    "description": "Monthly AutoPay Mandate",
+                    "description": "Setup ₹5 Autopay for ₹3000/mo Plan",
                     "image": "https://i.imgur.com/3g7nmJC.png",
                     "handler": function (response){
                         alert("✅ AutoPay Setup Successful! सब्सक्रिप्शन एक्टिव हो गया है।");
                         
-                        // पेमेंट/मैंडेट अप्रूव होने के बाद यूजर को आपकी मेन वेबसाइट पर रीडायरेक्ट कर देगा
+                        // सफलता के बाद यूजर को मेन साइट पर भेजना
                         window.location.href = "https://buildolive4-star.github.io/Fanzone/index.html?payment=success&sub_id=" + response.razorpay_subscription_id;
                     },
                     "theme": {
