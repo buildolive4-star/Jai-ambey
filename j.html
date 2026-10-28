@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fanzones Premium Checkout</title>
+    <!-- Razorpay SDK -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #030303;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .box {
+            background-color: #0d0d0f;
+            padding: 30px;
+            border-radius: 16px;
+            border: 1px solid rgba(255,0,127,0.4);
+            box-shadow: 0px 10px 30px rgba(255,0,127,0.2);
+            text-align: center;
+            width: 320px;
+        }
+        input {
+            width: 90%;
+            padding: 12px;
+            margin-bottom: 20px;
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+            border: 1px solid #333;
+            background: #000;
+            color: #ff007f;
+            border-radius: 8px;
+        }
+        button {
+            background: linear-gradient(135deg, #ff007f, #e11d48, #ff5e00);
+            color: white;
+            padding: 14px 20px;
+            font-size: 18px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            font-weight: bold;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="box">
+        <h2 style="color: #ff007f; margin-top:0;">Secure Checkout</h2>
+        <p style="color: #aaa; font-size:14px;">Complete your payment to unlock Fanzones Premium Content.</p>
+        
+        <!-- URL से रकम आटोमेटिक यहाँ आ जाएगी -->
+        <input type="number" id="payAmount" value="250" readonly>
+        
+        <button onclick="testPayment()">Pay Now & Unlock</button>
+    </div>
+
+    <script>
+        // Fanzones से पास किये गए पैसे (Amount) को URL से पढ़ना 
+        const urlParams = new URLSearchParams(window.location.search);
+        const amountFromUrl = urlParams.get('amount');
+        if(amountFromUrl) {
+            document.getElementById('payAmount').value = amountFromUrl;
+        }
+
+        async function testPayment() {
+            const amt = document.getElementById('payAmount').value;
+
+            if (!amt || amt <= 0) {
+                alert("कृपया सही रकम डालें!");
+                return;
+            }
+
+            try {
+                // 1. Backend से आर्डर बनाना
+                const response = await fetch('/create-order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ amount: amt }) 
+                });
+
+                if (!response.ok) {
+                    alert("Backend Error! क्या Render पर सर्वर चालू है?");
+                    return;
+                }
+
+                const order = await response.json();
+
+                // 2. Razorpay चालू करना
+                var options = {
+                    "key": "rzp_live_Tt1BBebmFbTNfO", // आपकी Live Key
+                    "amount": order.amount,
+                    "currency": "INR",
+                    "name": "Fanzones Premium",
+                    "description": "Unlock Premium Episodes",
+                    "order_id": order.id, 
+                    "handler": function (response){
+                        alert("✅ Payment Successful! Redirecting to unlock content...");
+                        
+                        // Yaha sabse important part hai: Payment ke baad user wapas pichli site par bhej diya jayega
+                        window.location.href = "https://buildolive4-star.github.io/Fanzone/index.html?payment=success&pid=" + response.razorpay_payment_id;
+                    },
+                    "theme": {
+                        "color": "#ff007f"
+                    }
+                };
+                
+                var rzp1 = new Razorpay(options);
+                rzp1.open();
+                
+            } catch (error) {
+                alert("सर्वर कनेक्ट नहीं हो रहा है! Render चेक करें।");
+                console.error(error);
+            }
+        }
+    </script>
+</body>
+</html>
