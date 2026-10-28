@@ -7,11 +7,17 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// आपकी index.html फाइल को दिखाने के लिए
+// आपकी HTML फाइल को दिखाने के लिए
 app.use(express.static(__dirname));
 
+// Route 1: अगर कोई सिर्फ jaiambey.shop/ लिखता है 
 app.get("/", (req, res) => {
-    res.sendFile(path.join(__dirname, "index.html"));
+    res.sendFile(path.join(__dirname, "j.html"));
+});
+
+// Route 2: अगर कोई jaiambey.shop/j.html लिखता है (यह लाइन आपके एरर को फिक्स करेगी)
+app.get("/j.html", (req, res) => {
+    res.sendFile(path.join(__dirname, "j.html"));
 });
 
 // Render Environment Variables से Keys लेगा
