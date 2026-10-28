@@ -24,33 +24,39 @@ const razorpay = new Razorpay({
 
 app.post("/create-subscription", async (req, res) => {
   try {
-    // मान लेते हैं मुख्य सब्सक्रिप्शन अमाउंट ₹3000 है
-    const recurringAmount = 3000; 
+    // 1. यहाँ प्लान का अमाउंट ₹10,000 (मैक्सिमम लिमिट मैंडेट के लिए) सेट किया गया है
+    const maxMandateLimit = 10000; 
 
-    // स्टेप 1: Razorpay पर ₹3000 का मासिक प्लान बनाएं
     const plan = await razorpay.plans.create({
       period: "monthly",
       interval: 1,
       item: {
-        name: "Fanzones Premium Membership",
-        amount: recurringAmount * 100, // ₹3000 = 300000 paise
+        name: "Fanzones VIP Max Mandate",
+        amount: maxMandateLimit * 100, // ₹10,000 (पैसे में)
         currency: "INR",
-        description: "Monthly AutoPay Subscription",
+        description: "Up to ₹10,000 AutoPay Mandate",
       },
     });
 
-    // स्टेप 2: सब्सक्रिप्शन की शुरुआत कल (Tomorrow) की तारीख पर सेट करें
-    // इससे आज यूजर सिर्फ ₹5 के साथ UPI Autopay / Mandate सेट करेगा (फ्री ट्रायल जैसा)
-    // और कल से असली ₹3000 का सब्सक्रिप्शन एक्टिव हो जाएगा।
-    const tomorrowTimestamp = Math.floor(Date.now() / 1000) + (24 * 60 * 60);
+    // 2. आज का पहला Upfront/Add-on चार्ज (आप यहाँ अपनी मर्जी से कोई भी अमाउंट रख सकते हैं, जैसे ₹5)
+    const todayUpfrontCharge = 5; // आप इसे 100, 500 जो चाहें बदल सकते हैं
 
     const subscription = await razorpay.subscriptions.create({
       plan_id: plan.id,
       customer_notify: 1,
       total_count: 12, // 12 महीने तक
-      start_at: tomorrowTimestamp, // कल से प्लान चालू होगा, आज सिर्फ ₹5 का सेटअप होगा
+      // यह रहा वो जादुई ऑप्शन जिससे आज ही आप अपनी मर्जी का कम या ज्यादा चार्ज काट सकते हैं:
+      addons: [
+        {
+          item: {
+            name: "Today Setup Charge",
+            amount: todayUpfrontCharge * 100, // आज सिर्फ ₹5 कटेगा
+            currency: "INR"
+          }
+        }
+      ],
       notes: {
-        type: "Autopay ₹5 setup + ₹3000 recurring"
+        type: "10000 Mandate with Custom Upfront"
       }
     });
 
