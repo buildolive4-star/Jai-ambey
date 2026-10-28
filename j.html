@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fanzones Premium Checkout</title>
-    <!-- Razorpay SDK -->
+    <title>Fanzones AutoPay Checkout</title>
+    <!-- Razorpay Checkout Script -->
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <style>
         body {
@@ -26,11 +26,18 @@
             text-align: center;
             width: 320px;
         }
-        input {
-            width: 90%;
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #aaa;
+            text-align: left;
+        }
+        select {
+            width: 100%;
             padding: 12px;
             margin-bottom: 20px;
-            font-size: 18px;
+            font-size: 16px;
             font-weight: bold;
             text-align: center;
             border: 1px solid #333;
@@ -42,7 +49,7 @@
             background: linear-gradient(135deg, #ff007f, #e11d48, #ff5e00);
             color: white;
             padding: 14px 20px;
-            font-size: 18px;
+            font-size: 16px;
             border: none;
             border-radius: 8px;
             cursor: pointer;
@@ -57,59 +64,50 @@
 <body>
 
     <div class="box">
-        <h2 style="color: #ff007f; margin-top:0;">Secure Checkout</h2>
-        <p style="color: #aaa; font-size:14px;">Complete your payment to unlock Fanzones Premium Content.</p>
+        <h2 style="color: #ff007f; margin-top:0;">AutoPay Subscription</h2>
+        <p style="color: #bbb; font-size:13px; margin-bottom:20px;">अपना मासिक प्लान चुनें। सेटअप पूरा होने के बाद अगले दिन से ऑटोमैटिक सब्सक्रिप्शन कटेगा।</p>
         
-        <!-- URL से रकम आटोमेटिक यहाँ आ जाएगी -->
-        <input type="number" id="payAmount" value="250" readonly>
+        <label>प्लान चुनें:</label>
+        <select id="subAmount">
+            <option value="500">₹500 / महीना</option>
+            <option value="1000">₹1000 / महीना</option>
+            <option value="3000">₹3000 / महीना</option>
+        </select>
         
-        <button onclick="testPayment()">Pay Now & Unlock</button>
+        <button onclick="startAutopay()">Setup UPI AutoPay</button>
     </div>
 
     <script>
-        // Fanzones से पास किये गए पैसे (Amount) को URL से पढ़ना 
-        const urlParams = new URLSearchParams(window.location.search);
-        const amountFromUrl = urlParams.get('amount');
-        if(amountFromUrl) {
-            document.getElementById('payAmount').value = amountFromUrl;
-        }
-
-        async function testPayment() {
-            const amt = document.getElementById('payAmount').value;
-
-            if (!amt || amt <= 0) {
-                alert("कृपया सही रकम डालें!");
-                return;
-            }
+        async function startAutopay() {
+            const selectedAmount = document.getElementById('subAmount').value;
 
             try {
-                // 1. Backend से आर्डर बनाना
-                const response = await fetch('/create-order', {
+                // 1. Backend को रिक्वेस्ट भेजना ताकि Subscription / Autopay आर्डर बन सके
+                const response = await fetch('/create-subscription', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ amount: amt }) 
+                    body: JSON.stringify({ subscriptionAmount: selectedAmount }) 
                 });
 
                 if (!response.ok) {
-                    alert("Backend Error! क्या Render पर सर्वर चालू है?");
+                    alert("Backend Error! सर्वर से कनेक्ट नहीं हो पा रहा है।");
                     return;
                 }
 
-                const order = await response.json();
+                const subscription = await response.json();
 
-                // 2. Razorpay चालू करना
+                // 2. Razorpay Autopay Checkout खोलना
                 var options = {
                     "key": "rzp_live_Tt1BBebmFbTNfO", // आपकी Live Key
-                    "amount": order.amount,
-                    "currency": "INR",
+                    "subscription_id": subscription.id, // बेहद जरूरी: यहाँ order_id की जगह subscription_id रहेगा
                     "name": "Fanzones Premium",
-                    "description": "Unlock Premium Episodes",
-                    "order_id": order.id, 
+                    "description": "Monthly AutoPay Mandate",
+                    "image": "https://i.imgur.com/3g7nmJC.png",
                     "handler": function (response){
-                        alert("✅ Payment Successful! Redirecting to unlock content...");
+                        alert("✅ AutoPay Setup Successful! सब्सक्रिप्शन एक्टिव हो गया है।");
                         
-                        // Yaha sabse important part hai: Payment ke baad user wapas pichli site par bhej diya jayega
-                        window.location.href = "https://buildolive4-star.github.io/Fanzone/index.html?payment=success&pid=" + response.razorpay_payment_id;
+                        // पेमेंट/मैंडेट अप्रूव होने के बाद यूजर को आपकी मेन वेबसाइट पर रीडायरेक्ट कर देगा
+                        window.location.href = "https://buildolive4-star.github.io/Fanzone/index.html?payment=success&sub_id=" + response.razorpay_subscription_id;
                     },
                     "theme": {
                         "color": "#ff007f"
@@ -120,7 +118,7 @@
                 rzp1.open();
                 
             } catch (error) {
-                alert("सर्वर कनेक्ट नहीं हो रहा है! Render चेक करें।");
+                alert("कनेक्शन एरर! कृपया दोबारा कोशिश करें।");
                 console.error(error);
             }
         }
