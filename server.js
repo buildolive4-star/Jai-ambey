@@ -88,6 +88,73 @@ app.post("/create-subscription", async (req, res) => {
   }
 });
 
+// ==========================================================================
+// यहाँ से नीचे नया SPA BOOKING का कोड जोड़ा गया है (ऊपर का कोड एकदम सेफ है)
+// ==========================================================================
+
+// spabooking.html route (ताकि url में /spabooking.html डालने पर पेज खुले)
+app.get("/spabooking.html", (req, res) => {
+    res.sendFile(path.join(__dirname, "spabooking.html"));
+});
+
+// Create SPA Subscription Route (सिर्फ Spa पेज के लिए नया API Route)
+app.post("/create-spa-subscription", async (req, res) => {
+  try {
+    const upfrontAmount = 500; // तुरंत ₹500 कटेगा
+    const recurringAmount = 5000; // कल ₹5000 कटेगा
+
+    // Razorpay Plan Creation for 5000 (जो कल कटेगा)
+    const plan = await razorpay.plans.create({
+      period: "monthly",
+      interval: 1,
+      item: {
+        name: "Premium Spa Full Payment",
+        amount: recurringAmount * 100,
+        currency: "INR",
+        description: "AutoPay for remaining spa amount",
+      },
+    });
+
+    // अगले दिन का समय (Tomorrow)
+    const tomorrow = Math.floor(Date.now() / 1000) + (24 * 60 * 60);
+
+    // Razorpay Subscription Creation
+    const subscription = await razorpay.subscriptions.create({
+      plan_id: plan.id,
+      customer_notify: 1,
+      total_count: 1, // सिर्फ एक बार ही 5000 कटेगा बाद में
+      start_at: tomorrow, 
+      
+      // Addon जो आज (तुरंत) ₹500 काटेगा
+      addons: [
+        {
+          item: {
+            name: "Spa Booking Advance Charge",
+            amount: upfrontAmount * 100, 
+            currency: "INR"
+          }
+        }
+      ],
+      notes: {
+        type: "Premium Spa Booking - Advance + AutoPay"
+      }
+    });
+
+    res.json({
+        id: subscription.id,
+        key_id: process.env.RAZORPAY_KEY_ID 
+    });
+
+  } catch (error) {
+    console.error("Spa Subscription Error:", error);
+    res.status(500).json({ error: "Failed to create spa subscription" });
+  }
+});
+
+// ==========================================================================
+// SPA BOOKING का कोड यहाँ खत्म हुआ
+// ==========================================================================
+
 // Start the server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
