@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Luxury Spa & Therapist Booking</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #111827; /* Dark theme */
+            color: #f3f4f6;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .gold-text { color: #d4af37; }
+        .gold-bg { background-color: #d4af37; }
+        .gold-bg:hover { background-color: #b5952f; }
+        .glass-card {
+            background: rgba(31, 41, 55, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid #374151;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <div class="glass-card max-w-md w-full rounded-2xl shadow-2xl overflow-hidden">
+        <!-- Image Header -->
+        <div class="relative h-56">
+            <img src="https://images.unsplash.com/photo-1544161515-4ab6ce6db874?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80" 
+                 alt="Luxury Spa" 
+                 class="w-full h-full object-cover">
+            <div class="absolute inset-0 bg-gradient-to-t from-gray-900 to-transparent"></div>
+            <div class="absolute bottom-4 left-4">
+                <h1 class="text-2xl font-bold gold-text">Exclusive Spa Booking</h1>
+                <p class="text-sm text-gray-300">Premium Spa Girl Services</p>
+            </div>
+        </div>
+
+        <!-- Details Section -->
+        <div class="p-6">
+            <h2 class="text-xl font-semibold mb-2">Selected Service: Full Body Relaxation</h2>
+            <p class="text-gray-400 text-sm mb-4">
+                Experience ultimate relaxation with our professional spa therapists. 
+                Your booking includes a 90-minute premium session, aromatherapy, and exclusive private ambiance.
+            </p>
+
+            <!-- Features -->
+            <ul class="space-y-2 mb-6 text-sm text-gray-300">
+                <li><i class="fas fa-check-circle gold-text mr-2"></i> Professional & Verified Therapists</li>
+                <li><i class="fas fa-check-circle gold-text mr-2"></i> 90-Min Private VIP Session</li>
+                <li><i class="fas fa-check-circle gold-text mr-2"></i> Premium Oils & Ambiance</li>
+            </ul>
+
+            <!-- Pricing Breakdown -->
+            <div class="bg-gray-800 rounded-lg p-4 mb-6 border border-gray-700">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-gray-400">Booking Advance (Pay Now)</span>
+                    <span class="font-bold text-white">₹500</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-gray-400">Pending Amount (Auto-Pay)</span>
+                    <span class="font-bold text-white">₹5000</span>
+                </div>
+                <hr class="border-gray-600 my-2">
+                <p class="text-xs text-gray-500 text-center">
+                    * ₹500 will be deducted immediately to confirm booking. The remaining ₹5000 will be auto-deducted next day.
+                </p>
+            </div>
+
+            <!-- Payment Button -->
+            <button id="pay-btn" class="w-full gold-bg text-black font-bold py-3 rounded-lg shadow-lg transition duration-300 text-lg flex justify-center items-center">
+                <span>Book Now - Pay ₹500</span>
+            </button>
+            <div id="loader" class="hidden text-center mt-3 text-sm gold-text">Processing your secure payment...</div>
+        </div>
+    </div>
+
+    <!-- Razorpay Checkout Script -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <script>
+        document.getElementById('pay-btn').onclick = async function (e) {
+            e.preventDefault();
+            const payBtn = document.getElementById('pay-btn');
+            const loader = document.getElementById('loader');
+            
+            payBtn.disabled = true;
+            payBtn.classList.add('opacity-50');
+            loader.classList.remove('hidden');
+
+            try {
+                // यह नई API कॉल है ताकि पुराना j.html वाला सिस्टम खराब न हो
+                const response = await fetch('/create-spa-subscription', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    alert("Error: " + data.error);
+                    resetButton();
+                    return;
+                }
+
+                // Initialize Razorpay Options
+                var options = {
+                    "key": data.key_id, 
+                    "subscription_id": data.id,
+                    "name": "Luxury Spa & Wellness",
+                    "description": "Spa Booking Advance & Mandate",
+                    "image": "https://cdn-icons-png.flaticon.com/512/1971/1971031.png", 
+                    "handler": function (response) {
+                        alert("Payment Successful! Booking Confirmed. Payment ID: " + response.razorpay_payment_id);
+                    },
+                    "prefill": {
+                        "name": "Guest User",
+                        "email": "guest@example.com",
+                        "contact": "9999999999"
+                    },
+                    "theme": {
+                        "color": "#d4af37" // Gold theme
+                    },
+                    "modal": {
+                        "ondismiss": function() {
+                            resetButton();
+                        }
+                    }
+                };
+
+                var rzp1 = new Razorpay(options);
+                rzp1.open();
+
+            } catch (error) {
+                console.error("Payment initiation failed", error);
+                alert("Something went wrong. Please try again.");
+                resetButton();
+            }
+        }
+
+        function resetButton() {
+            const payBtn = document.getElementById('pay-btn');
+            const loader = document.getElementById('loader');
+            payBtn.disabled = false;
+            payBtn.classList.remove('opacity-50');
+            loader.classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
