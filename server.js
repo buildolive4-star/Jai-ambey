@@ -158,6 +158,13 @@ function escapeHtml(str) {
     .replace(/'/g, "&#39;");
 }
 
+function safeEqualStrings(a, b) {
+  const bufA = Buffer.from(String(a || ""), "utf8");
+  const bufB = Buffer.from(String(b || ""), "utf8");
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 // 1. Health Check
 app.get("/datemate/health", (req, res) => {
   res.json({
@@ -249,7 +256,7 @@ app.post("/datemate/verify-payment", (req, res) => {
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
       .digest("hex");
 
-    if (expectedSignature !== razorpay_signature) {
+    if (!safeEqualStrings(expectedSignature, razorpay_signature)) {
       return res
         .status(400)
         .json({ verified: false, error: "Invalid payment signature" });
@@ -622,7 +629,7 @@ app.post("/takeit/verify-payment", (req, res) => {
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
       .digest("hex");
 
-    if (expectedSignature !== razorpay_signature) {
+    if (!safeEqualStrings(expectedSignature, razorpay_signature)) {
       return res
         .status(400)
         .json({ verified: false, error: "Invalid payment signature" });
@@ -675,7 +682,7 @@ app.get("/takeit/admin/transactions", async (req, res) => {
       const providedKey = String(
         req.headers["x-takeit-admin-key"] || req.query.adminKey || ""
       );
-      if (providedKey !== requiredAdminKey) {
+      if (!safeEqualStrings(providedKey, requiredAdminKey)) {
         return res.status(401).json({ error: "Unauthorized admin access" });
       }
     }
@@ -950,6 +957,485 @@ app.get("/takeit-pay", (req, res) => {
               returnBtn.href = deepLink;
               returnBtn.classList.remove("hidden");
               setStatus("Payment Verified! Returning to Take It app...", "ok");
+              window.location.href = deepLink;
+            } catch (err) {
+              payBtn.disabled = false;
+              setStatus("Verification error: " + err.message, "err");
+            }
+          },
+          modal: {
+            ondismiss: function () {
+              payBtn.disabled = false;
+              setStatus("Payment cancelled. Tap Pay again to retry.", "err");
+            },
+          },
+        };
+
+        const rzp = new Razorpay(options);
+        rzp.on("payment.failed", function (resp) {
+          payBtn.disabled = false;
+          setStatus(
+            "Payment failed: " +
+              (resp.error && resp.error.description
+                ? resp.error.description
+                : "Try again"),
+            "err"
+          );
+        });
+        rzp.open();
+      } catch (err) {
+        payBtn.disabled = false;
+        setStatus("Error: " + err.message, "err");
+      }
+    }
+  </script>
+</body>
+</html>`);
+});
+
+// ==========================================================================
+// APP 4: VIBELY SOCIAL VOICE APP — COIN RECHARGE & ISOLATED ADMIN PAYMENTS
+// ==========================================================================
+
+const vibelyVerifiedPayments = new Map();
+
+// 1. Health Check for VIBELY App
+app.get("/vibely/health", (req, res) => {
+  res.json({
+    ok: true,
+    app: "Vibely",
+    service: "VIBELY Coin Recharge Payment Gateway",
+    razorpayConfigured: Boolean(
+      process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET
+    ),
+  });
+});
+
+// 2. Create VIBELY Coin Recharge Order (tagged strictly with notes.app = "Vibely")
+app.post("/vibely/create-order", async (req, res) => {
+  try {
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+      return res
+        .status(500)
+        .json({ error: "Razorpay keys not configured on server" });
+    }
+
+    const rawAmount = Number(req.body.amount);
+    if (!Number.isFinite(rawAmount) || rawAmount < 1 || rawAmount > 500000) {
+      return res.status(400).json({ error: "Invalid recharge amount" });
+    }
+
+    const coins = Math.max(1, Math.round(Number(req.body.coins) || 100));
+    const bonusCoins = Math.max(0, Math.round(Number(req.body.bonusCoins) || 0));
+    const orderRef = String(req.body.orderRef || "VB_" + Date.now()).slice(0, 40);
+    const packageName = String(
+      req.body.packageName || `${coins} VIBELY Coins`
+    ).slice(0, 80);
+    const userName = String(req.body.userName || "VIBELY Member").slice(0, 60);
+    const userEmail = String(req.body.userEmail || "").slice(0, 80);
+    const userId = String(req.body.userId || "").slice(0, 64);
+
+    const order = await razorpay.orders.create({
+      amount: Math.round(rawAmount * 100),
+      currency: "INR",
+      receipt: orderRef,
+      notes: {
+        app: "Vibely",
+        orderRef,
+        packageName,
+        coins: String(coins),
+        bonusCoins: String(bonusCoins),
+        userName,
+        userEmail,
+        userId,
+      },
+    });
+
+    res.json({
+      orderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      keyId: process.env.RAZORPAY_KEY_ID,
+      orderRef,
+      coins,
+      bonusCoins,
+    });
+  } catch (error) {
+    console.error("Vibely Order Error:", error);
+    res.status(500).json({ error: "Failed to create VIBELY payment order" });
+  }
+});
+
+// 3. Verify VIBELY Razorpay Payment Signature (HMAC-SHA256)
+app.post("/vibely/verify-payment", (req, res) => {
+  try {
+    const {
+      orderRef,
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+      amount,
+      coins,
+      bonusCoins,
+      packageName,
+      userName,
+      userEmail,
+      userId,
+    } = req.body || {};
+
+    if (
+      !orderRef ||
+      !razorpay_order_id ||
+      !razorpay_payment_id ||
+      !razorpay_signature
+    ) {
+      return res
+        .status(400)
+        .json({ verified: false, error: "Missing payment parameters" });
+    }
+
+    const expectedSignature = crypto
+      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest("hex");
+
+    if (!safeEqualStrings(expectedSignature, razorpay_signature)) {
+      return res
+        .status(400)
+        .json({ verified: false, error: "Invalid payment signature" });
+    }
+
+    if (vibelyVerifiedPayments.size > 5000) {
+      const oldestKey = vibelyVerifiedPayments.keys().next().value;
+      if (oldestKey) vibelyVerifiedPayments.delete(oldestKey);
+    }
+
+    const record = {
+      verified: true,
+      app: "Vibely",
+      orderRef: String(orderRef),
+      orderId: String(razorpay_order_id),
+      paymentId: String(razorpay_payment_id),
+      amount: Number(amount) || 0,
+      coins: Math.max(0, Math.round(Number(coins) || 0)),
+      bonusCoins: Math.max(0, Math.round(Number(bonusCoins) || 0)),
+      packageName: String(packageName || "VIBELY Coins").slice(0, 80),
+      userName: String(userName || "VIBELY Member").slice(0, 60),
+      userEmail: String(userEmail || "").slice(0, 80),
+      userId: String(userId || "").slice(0, 64),
+      status: "CAPTURED",
+      verifiedAt: Date.now(),
+    };
+    vibelyVerifiedPayments.set(String(orderRef), record);
+
+    res.json(record);
+  } catch (error) {
+    console.error("Vibely Verify Error:", error);
+    res.status(500).json({ verified: false, error: "Verification failed" });
+  }
+});
+
+// 4. VIBELY Android App Status Check (polling fallback after Chrome return)
+app.get("/vibely/payment-status/:orderRef", (req, res) => {
+  const orderRef = String(req.params.orderRef || "");
+  const record = vibelyVerifiedPayments.get(orderRef);
+  if (record && record.verified) {
+    return res.json(record);
+  }
+  return res.json({ verified: false, app: "Vibely", orderRef });
+});
+
+// 5. VIBELY Admin Panel — Isolated Transactions Endpoint (ONLY Vibely app payments)
+app.get("/vibely/admin/transactions", async (req, res) => {
+  try {
+    const requiredAdminKey = process.env.VIBELY_ADMIN_KEY;
+    if (requiredAdminKey) {
+      const providedKey = String(
+        req.headers["x-vibely-admin-key"] || req.query.adminKey || ""
+      );
+      if (!safeEqualStrings(providedKey, requiredAdminKey)) {
+        return res.status(401).json({ error: "Unauthorized VIBELY admin access" });
+      }
+    }
+
+    const limit = Math.min(100, Math.max(1, Number(req.query.count) || 50));
+    const mergedByPaymentId = new Map();
+
+    // Pull live Razorpay payments filtered STRICTLY to notes.app === "Vibely"
+    if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+      try {
+        const rzpRes = await razorpay.payments.all({ count: limit });
+        const items = Array.isArray(rzpRes && rzpRes.items) ? rzpRes.items : [];
+        for (const p of items) {
+          const notes = p && p.notes ? p.notes : {};
+          if (notes.app !== "Vibely") continue;
+
+          mergedByPaymentId.set(String(p.id), {
+            app: "Vibely",
+            paymentId: String(p.id),
+            orderId: String(p.order_id || ""),
+            orderRef: String(notes.orderRef || p.order_id || p.id),
+            amount: Math.round((Number(p.amount) || 0) / 100),
+            coins: Number(notes.coins) || 0,
+            bonusCoins: Number(notes.bonusCoins) || 0,
+            currency: String(p.currency || "INR"),
+            status: String(p.status || "captured").toUpperCase(),
+            method: String(p.method || "razorpay").toUpperCase(),
+            packageName: String(notes.packageName || p.description || "VIBELY Coins"),
+            userName: String(notes.userName || "VIBELY Member"),
+            userEmail: String(notes.userEmail || p.email || ""),
+            userId: String(notes.userId || ""),
+            verifiedAt: p.created_at ? Number(p.created_at) * 1000 : Date.now(),
+          });
+        }
+      } catch (rzpErr) {
+        console.error("Vibely Razorpay fetch warning:", rzpErr.message);
+      }
+    }
+
+    // Merge locally verified VIBELY records for instant Admin Panel updates
+    for (const rec of vibelyVerifiedPayments.values()) {
+      if (rec.app !== "Vibely") continue;
+      if (!mergedByPaymentId.has(rec.paymentId)) {
+        mergedByPaymentId.set(rec.paymentId, {
+          app: "Vibely",
+          paymentId: rec.paymentId,
+          orderId: rec.orderId,
+          orderRef: rec.orderRef,
+          amount: rec.amount,
+          coins: rec.coins || 0,
+          bonusCoins: rec.bonusCoins || 0,
+          currency: "INR",
+          status: rec.status || "CAPTURED",
+          method: "RAZORPAY",
+          packageName: rec.packageName || "VIBELY Coins",
+          userName: rec.userName || "VIBELY Member",
+          userEmail: rec.userEmail || "",
+          userId: rec.userId || "",
+          verifiedAt: rec.verifiedAt || Date.now(),
+        });
+      }
+    }
+
+    const transactions = Array.from(mergedByPaymentId.values()).sort(
+      (a, b) => (b.verifiedAt || 0) - (a.verifiedAt || 0)
+    );
+
+    const totalRevenue = transactions
+      .filter((t) => t.status === "CAPTURED" || t.status === "AUTHORIZED")
+      .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+    res.json({
+      ok: true,
+      app: "Vibely",
+      count: transactions.length,
+      totalRevenue,
+      transactions,
+    });
+  } catch (error) {
+    console.error("Vibely Admin Transactions Error:", error);
+    res.status(500).json({ error: "Failed to load VIBELY transactions" });
+  }
+});
+
+// 6. Hosted Chrome Checkout Page for VIBELY Coin Recharge
+app.get("/vibely-pay", (req, res) => {
+  const orderRef = String(req.query.orderRef || "VB_" + Date.now()).slice(0, 40);
+  const amount = Math.max(1, Math.round(Number(req.query.amount) || 0));
+  const coins = Math.max(1, Math.round(Number(req.query.coins) || 100));
+  const bonusCoins = Math.max(0, Math.round(Number(req.query.bonusCoins) || 0));
+  const packageName = String(
+    req.query.packageName || `${coins} + ${bonusCoins} Bonus Coins`
+  ).slice(0, 80);
+  const userName = String(req.query.userName || "VIBELY Creator").slice(0, 60);
+  const userEmail = String(req.query.userEmail || "").slice(0, 80);
+  const userId = String(req.query.userId || "").slice(0, 64);
+
+  if (!amount || amount < 1) {
+    return res.status(400).send("<h2>Invalid VIBELY recharge amount.</h2>");
+  }
+
+  const safeData = JSON.stringify({
+    orderRef,
+    amount,
+    coins,
+    bonusCoins,
+    packageName,
+    userName,
+    userEmail,
+    userId,
+  }).replace(/</g, "\\u003c");
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VIBELY · Instant Coin Recharge</title>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: radial-gradient(circle at top, #2a1252 0%, #120826 55%, #090414 100%);
+      padding: 20px; color: #f8fafc;
+    }
+    .card {
+      width: 100%; max-width: 420px; background: rgba(24, 15, 48, 0.96); border-radius: 28px;
+      padding: 26px 22px; box-shadow: 0 24px 60px rgba(150, 92, 255, 0.35);
+      border: 1.5px solid rgba(255, 200, 87, 0.72); text-align: center;
+    }
+    .badge {
+      display: inline-block; background: rgba(255, 77, 171, 0.18); color: #ffc857; font-weight: 800;
+      font-size: 12px; padding: 6px 14px; border-radius: 999px; border: 1px solid rgba(255, 200, 87, 0.55);
+    }
+    h1 { margin: 12px 0 4px; font-size: 24px; font-weight: 900; color: #ffffff; }
+    .sub { margin: 0 0 18px; font-size: 13px; color: #b7a8d6; }
+    .details {
+      background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(150, 92, 255, 0.35);
+      border-radius: 18px; padding: 14px 16px; text-align: left; margin-bottom: 18px;
+    }
+    .row { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; font-size: 14px; }
+    .row + .row { border-top: 1px dashed rgba(150, 92, 255, 0.35); }
+    .label { color: #b7a8d6; font-weight: 600; }
+    .val { color: #ffffff; font-weight: 800; text-align: right; }
+    .gold { color: #ffc857; }
+    .amount-box {
+      background: linear-gradient(135deg, #965cff, #ff4dab); color: #ffffff;
+      border-radius: 18px; padding: 14px; margin-bottom: 18px;
+      box-shadow: 0 10px 26px rgba(255, 77, 171, 0.38);
+    }
+    .amount-box small { display: block; color: #ffe79a; font-size: 12px; font-weight: 800; letter-spacing: 0.7px; }
+    .amount-box strong { font-size: 34px; font-weight: 900; letter-spacing: 0.5px; }
+    .btn {
+      width: 100%; border: none; border-radius: 16px; padding: 15px 18px;
+      font-size: 16px; font-weight: 900; color: #160a2e; cursor: pointer;
+      background: linear-gradient(135deg, #ffe27a, #ffc857);
+      box-shadow: 0 6px 0 #b88412, 0 14px 28px rgba(255, 200, 87, 0.32);
+      transition: transform 0.12s ease;
+    }
+    .btn:active { transform: translateY(3px); }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-return {
+      background: linear-gradient(135deg, #38bdf8, #965cff); color: #ffffff;
+      box-shadow: 0 6px 0 #3b2478, 0 14px 28px rgba(150, 92, 255, 0.35);
+      text-decoration: none; display: inline-block; margin-top: 12px;
+    }
+    #status { margin-top: 14px; font-size: 13px; font-weight: 700; color: #c4b5fd; min-height: 20px; }
+    .ok { color: #4ade80 !important; }
+    .err { color: #fb7185 !important; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="badge">VIBELY Verified Gold Recharge</span>
+    <h1>Unlock ${coins + bonusCoins} Coins</h1>
+    <p class="sub">Complete secure Razorpay checkout to credit Coins instantly to your VIBELY wallet.</p>
+
+    <div class="details">
+      <div class="row"><span class="label">Package</span><span class="val gold">${escapeHtml(packageName)}</span></div>
+      <div class="row"><span class="label">Coins + Bonus</span><span class="val gold">${coins} + ${bonusCoins} Bonus</span></div>
+      ${userName ? `<div class="row"><span class="label">Account</span><span class="val">${escapeHtml(userName)}</span></div>` : ""}
+      <div class="row"><span class="label">Order Ref</span><span class="val">${escapeHtml(orderRef)}</span></div>
+    </div>
+
+    <div class="amount-box">
+      <small>INSTANT COIN RECHARGE</small>
+      <strong>&#8377;${amount}</strong>
+    </div>
+
+    <button id="payBtn" class="btn" onclick="startVibelyPayment()">Pay &#8377;${amount} &amp; Get Coins</button>
+    <a id="returnBtn" class="btn btn-return hidden" href="#">Return to VIBELY App</a>
+    <div id="status">100% Secure Razorpay Checkout (UPI / Cards / Wallets)</div>
+  </div>
+
+  <script>
+    const DATA = ${safeData};
+    const payBtn = document.getElementById("payBtn");
+    const returnBtn = document.getElementById("returnBtn");
+    const statusEl = document.getElementById("status");
+
+    function setStatus(msg, cls) {
+      statusEl.textContent = msg;
+      statusEl.className = cls || "";
+    }
+
+    async function startVibelyPayment() {
+      try {
+        payBtn.disabled = true;
+        setStatus("Creating secure VIBELY Razorpay order...", "");
+
+        const orderRes = await fetch("/vibely/create-order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderRef: DATA.orderRef,
+            amount: DATA.amount,
+            coins: DATA.coins,
+            bonusCoins: DATA.bonusCoins,
+            packageName: DATA.packageName,
+            userName: DATA.userName,
+            userEmail: DATA.userEmail,
+            userId: DATA.userId,
+          }),
+        });
+        const orderData = await orderRes.json();
+        if (!orderRes.ok || !orderData.orderId) {
+          throw new Error(orderData.error || "Order creation failed");
+        }
+
+        const options = {
+          key: orderData.keyId,
+          amount: orderData.amount,
+          currency: orderData.currency || "INR",
+          name: "VIBELY",
+          description: DATA.packageName,
+          order_id: orderData.orderId,
+          prefill: {
+            name: DATA.userName || "",
+            email: DATA.userEmail || "",
+          },
+          theme: { color: "#965CFF" },
+          handler: async function (response) {
+            try {
+              setStatus("Verifying payment with VIBELY server...", "");
+              const verifyRes = await fetch("/vibely/verify-payment", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  orderRef: DATA.orderRef,
+                  amount: DATA.amount,
+                  coins: DATA.coins,
+                  bonusCoins: DATA.bonusCoins,
+                  packageName: DATA.packageName,
+                  userName: DATA.userName,
+                  userEmail: DATA.userEmail,
+                  userId: DATA.userId,
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                }),
+              });
+              const verifyData = await verifyRes.json();
+              if (!verifyRes.ok || !verifyData.verified) {
+                throw new Error(verifyData.error || "Signature verification failed");
+              }
+
+              const deepLink =
+                "vibely://payment-result?status=success" +
+                "&orderRef=" + encodeURIComponent(DATA.orderRef) +
+                "&paymentId=" + encodeURIComponent(response.razorpay_payment_id) +
+                "&orderId=" + encodeURIComponent(response.razorpay_order_id) +
+                "&amount=" + encodeURIComponent(DATA.amount) +
+                "&coins=" + encodeURIComponent(DATA.coins + DATA.bonusCoins) +
+                "&packageName=" + encodeURIComponent(DATA.packageName);
+
+              payBtn.classList.add("hidden");
+              returnBtn.href = deepLink;
+              returnBtn.classList.remove("hidden");
+              setStatus("Coins Verified! Returning to VIBELY app...", "ok");
               window.location.href = deepLink;
             } catch (err) {
               payBtn.disabled = false;
